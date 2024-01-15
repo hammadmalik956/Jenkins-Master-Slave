@@ -1,0 +1,484 @@
+
+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
+
+
+aws configure set aws-access-key-id $AWS_ACCESS_KEY_ID
+aws configure set aws-secret-access-key $AWS_SECRET_ACCESS_KEY
+aws configure set default.region 'us-east-2'
+
+aws cloudformation create-stack     --stack-name sehel-vpc     --template-body file:////home/ubuntu/3-tier-application/3-tier.yaml
+
+
+
+#!/bin/bash
+aws configure set aws-access-key-id $AWS_ACCESS_KEY_ID
+aws configure set aws-secret-access-key $AWS_SECRET_ACCESS_KEY
+aws configure set default.region 'us-east-2'
+
+STACK_NAME="sehel-vpc"
+
+if aws cloudformation describe-stacks --stack-name $STACK_NAME &>/dev/null; then
+   
+    echo "Stack $STACK_NAME already exists.
+
+    aws cloudformation update-stack --stack-name $STACK_NAME --template-body file:///home/ubuntu/3-tier-application/3-tier.yaml
+
+    aws cloudformation wait stack-update-complete --stack-name $STACK_NAME
+else
+   
+    echo "Stack $STACK_NAME doesn't exist. Creating it..."
+
+    aws cloudformation create-stack --stack-name $STACK_NAME --template-body file:///home/ubuntu/3-tier-application/3-tier.yaml
+
+    aws cloudformation wait stack-create-complete --stack-name $STACK_NAME
+fi
+
+    
+    
+#declerative pipline   
+    
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'STACK_NAME', description: 'Stack Name', defaultValue: 'sehel-vpc1')
+        string(name: 'PublicSubnet1Cidr', description: 'Public Subnet 1 CIDR', defaultValue: '10.0.1.0/24')
+        string(name: 'PublicSubnet2Cidr', description: 'Public Subnet 2 CIDR', defaultValue: '10.0.2.0/24')
+        string(name: 'PrivateSubnet1Cidr', description: 'Private Subnet 1 CIDR', defaultValue: '10.0.3.0/24')
+        string(name: 'PrivateSubnet2Cidr', description: 'Private Subnet 2 CIDR', defaultValue: '10.0.4.0/24')
+        string(name: 'DBSubnet1Cidr', description: 'DB Subnet 1 CIDR', defaultValue: '10.0.5.0/24')
+        string(name: 'DBSubnet2Cidr', description: 'DB Subnet 2 CIDR', defaultValue: '10.0.6.0/24')
+    }
+
+    stages {
+        stage('Clone GitHub Repository') {
+            steps {
+                git branch: 'main', credentialsId: 'sehel-jenkin3', url: 'https://github.com/sehelkhan5/jenkins-aws.git'
+            }
+        }
+
+        stage('Check if Stack Exists or Needs Update') {
+            steps {
+                script {
+                    def stackExists = sh(script: "aws cloudformation describe-stacks --stack-name $STACK_NAME", returnStatus: true)
+                    if (stackExists != 0) {
+                        // The stack doesn't exist; create it
+                        echo "Creating Stack $STACK_NAME..."
+                        sh "aws cloudformation create-stack --stack-name $STACK_NAME --template-body file:///var/lib/jenkins/workspace/sehelkhan-cloud-declerative/3-tier.yaml --parameters ParameterKey=PublicSubnet1Cidr,ParameterValue=$PublicSubnet1Cidr ParameterKey=PublicSubnet2Cidr,ParameterValue=$PublicSubnet2Cidr ParameterKey=PrivateSubnet1Cidr,ParameterValue=$PrivateSubnet1Cidr ParameterKey=PrivateSubnet2Cidr,ParameterValue=$PrivateSubnet2Cidr ParameterKey=DBSubnet1Cidr,ParameterValue=$DBSubnet1Cidr ParameterKey=DBSubnet2Cidr,ParameterValue=$DBSubnet2Cidr"
+                        sh "aws cloudformation wait stack-create-complete --stack-name $STACK_NAME"
+                    } else {
+                        // The stack exists; check if it needs an update
+                        def stackUpdateRequired = sh(script: "aws cloudformation deploy --stack-name $STACK_NAME --template-file /var/lib/jenkins/workspace/sehelkhan-cloud-declerative/3-tier.yaml --no-execute-changeset --output json", returnStatus: true)
+                        if (stackUpdateRequired != 0) {
+                            echo "Updates are required for the stack. Initiating the update..."
+                            // Perform the update
+                            sh "aws cloudformation deploy --stack-name $STACK_NAME --template-file /var/lib/jenkins/workspace/sehelkhan-cloud-declerative/3-tier.yaml --parameter-overrides PublicSubnet1Cidr=$PublicSubnet1Cidr PublicSubnet2Cidr=$PublicSubnet2Cidr PrivateSubnet1Cidr=$PrivateSubnet1Cidr PrivateSubnet2Cidr=$PrivateSubnet2Cidr DBSubnet1Cidr=$DBSubnet1Cidr DBSubnet2Cidr=$DBSubnet2Cidr"
+                        } else {
+                            echo "No updates are required for the stack."
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Stack successfully created or updated."
+        }
+    }
+}
+
+
+
+#scripted pipline
+
+
+properties(
+    [
+       parameters ( [
+                    string(name: 'STACK_NAME', description: 'Stack Name', defaultValue: 'sehel-vpc1'),
+                    string(name: 'PublicSubnet1Cidr', description: 'Public Subnet 1 CIDR', defaultValue: '10.0.1.0/24'),
+                    string(name: 'PublicSubnet2Cidr', description: 'Public Subnet 2 CIDR', defaultValue: '10.0.2.0/24'),
+                    string(name: 'PrivateSubnet1Cidr', description: 'Private Subnet 1 CIDR', defaultValue: '10.0.3.0/24'),
+                    string(name: 'PrivateSubnet2Cidr', description: 'Private Subnet 2 CIDR', defaultValue: '10.0.4.0/24'),
+                    string(name: 'DBSubnet1Cidr', description: 'DB Subnet 1 CIDR', defaultValue: '10.0.5.0/24'),
+                    string(name: 'DBSubnet2Cidr', description: 'DB Subnet 2 CIDR', defaultValue: '10.0.6.0/24')
+                ])
+    ]
+)  
+
+
+
+
+node {
+    stage('Clone GitHub Repository') {
+        git branch: 'main', credentialsId: 'sehel-jenkin3', url: 'https://github.com/sehelkhan5/jenkins-aws.git'
+    }
+    
+    stage('Check if Stack Exists or Needs Update') {
+        def stackExists = sh(script: "aws cloudformation describe-stacks --stack-name ${params.STACK_NAME}", returnStatus: true)
+        
+        if (stackExists != 0) {
+            // The stack doesn't exist; create it
+            echo "Creating Stack ${params.STACK_NAME}..."
+            sh "aws cloudformation create-stack --stack-name ${params.STACK_NAME} --template-body file:///var/lib/jenkins/workspace/sehelkhan-cloud-declerative/3-tier.yaml --parameters ParameterKey=PublicSubnet1Cidr,ParameterValue=${params.PublicSubnet1Cidr} ParameterKey=PublicSubnet2Cidr,ParameterValue=${params.PublicSubnet2Cidr} ParameterKey=PrivateSubnet1Cidr,ParameterValue=${params.PrivateSubnet1Cidr} ParameterKey=PrivateSubnet2Cidr,ParameterValue=${params.PrivateSubnet2Cidr} ParameterKey=DBSubnet1Cidr,ParameterValue=${params.DBSubnet1Cidr} ParameterKey=DBSubnet2Cidr,ParameterValue=${params.DBSubnet2Cidr}"
+            sh "aws cloudformation wait stack-create-complete --stack-name ${params.STACK_NAME}"
+        } else {
+            def stackUpdateRequired = sh(script: "aws cloudformation deploy --stack-name ${params.STACK_NAME} --template-file /var/lib/jenkins/workspace/sehelkhan-cloud-declerative/3-tier.yaml --no-execute-changeset --output json", returnStatus: true)
+            if (stackUpdateRequired != 0) {
+                echo "Updates are required for the stack. Initiating the update..."
+                sh "aws cloudformation deploy --stack-name ${params.STACK_NAME} --template-file /var/lib/jenkins/workspace/sehelkhan-cloud-declerative/3-tier.yaml --parameter-overrides PublicSubnet1Cidr=${params.PublicSubnet1Cidr} PublicSubnet2Cidr=${params.PublicSubnet2Cidr} PrivateSubnet1Cidr=${params.PrivateSubnet1Cidr} PrivateSubnet2Cidr=${params.PrivateSubnet2Cidr} DBSubnet1Cidr=${params.DBSubnet1Cidr} DBSubnet2Cidr=${params.DBSubnet2Cidr}"
+            } else {
+                echo "No updates are required for the stack."
+            }
+        }
+    }
+    
+    stage('Post') {
+        echo "Stack successfully created or updated."
+    }
+}
+
+
+
+#scripted pipeline with slack
+
+
+properties([
+    parameters([
+        string(name: 'STACK_NAME', description: 'Stack Name', defaultValue: 'sehel-vpc1'),
+        string(name: 'PublicSubnet1Cidr', description: 'Public Subnet 1 CIDR', defaultValue: '10.0.1.0/24'),
+        string(name: 'PublicSubnet2Cidr', description: 'Public Subnet 2 CIDR', defaultValue: '10.0.2.0/24'),
+        string(name: 'PrivateSubnet1Cidr', description: 'Private Subnet 1 CIDR', defaultValue: '10.0.3.0/24'),
+        string(name: 'PrivateSubnet2Cidr', description: 'Private Subnet 2 CIDR', defaultValue: '10.0.4.0/24'),
+        string(name: 'DBSubnet1Cidr', description: 'DB Subnet 1 CIDR', defaultValue: '10.0.5.0/24'),
+        string(name: 'DBSubnet2Cidr', description: 'DB Subnet 2 CIDR', defaultValue: '10.0.6.0/24')
+    ])
+])
+
+node {
+    try {
+        stage('Clone GitHub Repository') {
+            git branch: 'main', credentialsId: 'sehel-jenkin3', url: 'https://github.com/sehelkhan5/jenkins-aws.git'
+        }
+
+        stage('Check if Stack Exists or Needs Update') {
+            def stackExists = sh(script: "aws cloudformation describe-stacks --stack-name ${params.STACK_NAME}", returnStatus: true)
+
+            if (stackExists != 0) {
+                echo "Creating Stack ${params.STACK_NAME}..."
+                sh "aws cloudformation create-stack --stack-name ${params.STACK_NAME} --template-body file:///var/lib/jenkins/workspace/sehelkhan-cloud-scripted/3-tier.yaml --parameters ParameterKey=PublicSubnet1Cidr,ParameterValue=${params.PublicSubnet1Cidr} ParameterKey=PublicSubnet2Cidr,ParameterValue=${params.PublicSubnet2Cidr} ParameterKey=PrivateSubnet1Cidr,ParameterValue=${params.PrivateSubnet1Cidr} ParameterKey=PrivateSubnet2Cidr,ParameterValue=${params.PrivateSubnet2Cidr} ParameterKey=DBSubnet1Cidr,ParameterValue=${params.DBSubnet1Cidr} ParameterKey=DBSubnet2Cidr,ParameterValue=${params.DBSubnet2Cidr}"
+                sh "aws cloudformation wait stack-create-complete --stack-name ${params.STACK_NAME}"
+                
+                
+                slackSend(
+                    color: 'good',
+                    message: "Stack ${params.STACK_NAME} has been created successfully",
+                    channel: '#sehel-alerts'  
+                )
+            } else {
+                def stackUpdateRequired = sh(script: "aws cloudformation deploy --stack-name ${params.STACK_NAME} --template-file /var/lib/jenkins/workspace/sehelkhan-cloud-scripted/3-tier.yaml --no-execute-changeset --output json", returnStatus: true)
+                if (stackUpdateRequired != 0) {
+                    echo "Updates are required for the stack. Initiating the update..."
+                    sh "aws cloudformation deploy --stack-name ${params.STACK_NAME} --template-file /var/lib/jenkins/workspace/sehelkhan-cloud-scripted/3-tier.yaml --parameter-overrides PublicSubnet1Cidr=${params.PublicSubnet1Cidr} PublicSubnet2Cidr=${params.PublicSubnet2Cidr} PrivateSubnet1Cidr=${params.PrivateSubnet1Cidr} PrivateSubnet2Cidr=${params.PrivateSubnet2Cidr} DBSubnet1Cidr=${params.DBSubnet1Cidr} DBSubnet2Cidr=${params.DBSubnet2Cidr}"
+                    
+                    
+                    slackSend(
+                        color: 'warning',
+                        message: "Stack ${params.STACK_NAME} has been updated",
+                        channel: '#sehel-alerts'  
+                    )
+                } else {
+                    echo "No updates are required for the stack."
+                }
+            }
+        }
+        
+        stage('Post') {
+            echo "Stack successfully created or updated."
+        }
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE' 
+        echo "Error occurred: ${e.getMessage()}"
+        
+       
+        slackSend(
+            color: currentBuild.result == 'SUCCESS' ? 'good' : 'danger',
+            message: currentBuild.result == 'SUCCESS' ? "Pipeline succeeded" : "Pipeline failed: ${e.getMessage()}",
+            channel: '#sehel-alerts'  // Replace with your Slack channel
+     )
+
+    }
+}
+
+
+#terraform  deployment
+
+def tfvarsInput
+def applyInput
+pipeline {
+    agent any
+
+    // environment {
+        
+    //      TF_VAR_region = 'us-east-2' 
+    //     // TFVARS_FILE ='prod.tfvars'
+    // }
+    tools {
+  terraform 'terraform-sehel'
+      }
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'sehel-jenkin3', url: 'https://github.com/sehelkhan5/jenkins-terraform.git'
+                
+            }
+        }
+    stage('Terraform Init') {
+            steps {
+                script {
+                    sh 'terraform init -input=false'
+                }
+            }
+        }
+       
+        stage('Input: Provide tfvars file') {
+            steps {
+                script {
+                    tfvarsInput = input(
+                        id: 'tfvarsInput',
+                        message: 'Enter the path to your tfvars file:',
+                        parameters: [string(defaultValue: '', description: 'Path to the tfvars file', name: 'TFVARS_FILE')]
+                    )
+                    echo "${tfvarsInput}"
+                    
+                   
+                }
+            }
+        }
+        
+        stage('Input: Terraform Workspace') {
+            steps {
+                script {
+                    tfWorkspaceInput = input(
+                        id: 'tfWorkspaceInput',
+                        message: 'Enter the Terraform workspace name:',
+                        parameters: [string(defaultValue: 'my-terraform-workspace', description: 'Terraform workspace name', name: 'TF_WORKSPACE')]
+                    )
+                    echo "${tfWorkspaceInput}"
+                }
+            }
+        }
+        
+        stage('Terraform Plan') {
+            steps {
+                script {
+                    
+                     sh "terraform plan -input=false -out=tfplan -var-file=${tfvarsInput}"
+                }
+            }
+        }
+
+        stage('Input: Apply Terraform Changes') {
+            steps {
+                script {
+                     applyInput = input(
+                        id: 'applyInput',
+                        message: 'Do you want to apply the Terraform changes (yes/no)?',
+                        parameters: [booleanParam(defaultValue: false, description: 'Apply Terraform changes?', name: 'APPLY_TF')]
+                    )
+                    echo "${applyInput}"
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { applyInput == true }
+            }
+            steps {
+                script {
+                    sh "terraform apply -auto-approve -var-file=${tfvarsInput}"
+                }
+            }
+        }
+     }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully'
+          
+        }
+
+        failure {
+            echo 'Pipeline failed'
+          
+        }
+    }
+}
+
+
+#ECR 
+
+pipeline {
+    agent any
+    
+    environment {
+        ECR_REGISTRY = '489994096722.dkr.ecr.us-east-2.amazonaws.com'
+        ECR_REPOSITORY = 'sehel-node'
+    }
+
+    tools {
+         dockerTool 'sehel-docker'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', credentialsId: 'sehel-jenkin3', url: 'https://github.com/sehelkhan5/jenkins-node-application.git'
+            }
+        }
+
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                   
+                     DOCKER_IMAGE = 'my-docker-image'
+                     DOCKER_TAG = "${BUILD_NUMBER}"
+                    
+                    
+
+                    
+                     sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+
+                     sh '''docker login -u AWS https://489994096722.dkr.ecr.us-east-2.amazonaws.com -p $(aws ecr get-login-password --region us-east-2)'''
+
+                   
+                    
+                     sh "docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${DOCKER_TAG}"
+
+                    
+                     sh "docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${DOCKER_TAG}"
+                   
+                   
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Docker image successfully built and pushed to ECR."
+        }
+    }
+}
+
+
+#ECS
+
+// def tfvarsInput
+def applyInput
+pipeline {
+    agent any
+
+    // environment {
+        
+    //      TF_VAR_region = 'us-east-2' 
+    //     // TFVARS_FILE ='prod.tfvars'
+    // }
+    tools {
+  terraform 'terraform-sehel'
+      }
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'sehel-jenkin3', url: 'https://github.com/sehelkhan5/jenkins-ecs-ecr.git'
+                
+            }
+        }
+    stage('Terraform Init') {
+            steps {
+                script {
+                    sh 'terraform init -input=false'
+                }
+            }
+        }
+       
+       
+        
+        stage('Terraform Plan') {
+            steps {
+                script {
+                    
+                    // sh "terraform plan -input=false -out=tfplan "
+                    sh "terraform init "
+                }
+            }
+        }
+
+        stage('Input: Apply Terraform Changes') {
+            steps {
+                script {
+                     applyInput = input(
+                        id: 'applyInput',
+                        message: 'Do you want to apply the Terraform changes (yes/no)?',
+                        parameters: [booleanParam(defaultValue: false, description: 'Apply Terraform changes?', name: 'APPLY_TF')]
+                    )
+                    echo "${applyInput}"
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { applyInput == true }
+            }
+            steps {
+                script {
+                    sh "terraform apply -auto-approve"
+                }
+            }
+        }
+     }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully'
+          
+        }
+
+        failure {
+            echo 'Pipeline failed'
+          
+        }
+    }
+}
+
+
+
+pipeline {
+    agent any
+
+    tools {
+        // Define the Docker tool with the tool name specified in Jenkins configuration
+        dockerTool 'hammad-docker'
+    }
+
+    stages {
+        stage('Build and Run Docker Container') {
+            steps {
+                script {
+                  
+                    // Your Docker-related steps go here
+                     sh 'docker run -d hello-world'
+                }
+            }
+        }
+
+        // Add more stages as needed
+    }
+}
+
+
+
